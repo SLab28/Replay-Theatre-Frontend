@@ -106,9 +106,9 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
     userActivationHasBeenActive: navigator.userActivation?.hasBeenActive,
   });
 
-  // Build feature lists with reference space negotiation
-  const requiredFeatures = [];
-  const optionalFeatures = ['unbounded', 'local-floor', 'local', 'viewer'];
+  // Build feature lists — Quest requires local-floor for immersive-vr
+  const requiredFeatures = ['local-floor'];
+  const optionalFeatures = ['local', 'viewer'];
   const sessionInit = {
     requiredFeatures,
     optionalFeatures,
@@ -168,9 +168,9 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
     throw err;
   }
 
-  // Prefer unbounded space for vast/infinite-feel VR environments.
+  // Prefer local-floor (guaranteed by requiredFeatures on Quest).
   async function getReferenceSpace(session) {
-    const types = ['unbounded', 'local-floor', 'local', 'viewer'];
+    const types = ['local-floor', 'local', 'viewer'];
     for (const type of types) {
       try {
         const refSpace = await session.requestReferenceSpace(type);
