@@ -317,6 +317,12 @@ function waitForUserTapAndStartAR() {
     }, 500);
     
     btn.addEventListener('click', async () => {
+      console.log('[HIDDEN] Enter VR click:', {
+        secureContext: window.isSecureContext,
+        userActivationActive: navigator.userActivation?.isActive,
+        userActivationHasBeenActive: navigator.userActivation?.hasBeenActive,
+      });
+
       // Fade out the last sentence when button is pressed
       statusEl.style.transition = 'opacity 0.5s ease-out';
       statusEl.style.opacity = '0';
@@ -330,15 +336,21 @@ function waitForUserTapAndStartAR() {
       // IMPORTANT: keep requestSession call in this click task to preserve
       // Chrome's transient user activation requirement for immersive-vr.
       try {
-        await initVoiceAudioReactivity();
         await startWorldAR();
+
+        // Request microphone only after immersive session is established.
+        // Avoid consuming transient user activation before requestSession().
+        initVoiceAudioReactivity().catch((audioErr) => {
+          console.warn('[Audio] Post-XR mic init failed:', audioErr?.message || audioErr);
+        });
       } catch (err) {
         console.error('[HIDDEN] WebXR failed:', err);
         console.error('[HIDDEN] Error name:', err.name);
         console.error('[HIDDEN] Error message:', err.message);
         console.error('[HIDDEN] Error stack:', err.stack);
+        statusEl.style.opacity = '1';
+        statusEl.style.transition = '';
         setArStatus('WebXR failed: ' + (err.message || err.name || 'Unknown error'));
-        // Don't fallback - just show error
       } finally {
         resolve();
       }
@@ -348,6 +360,11 @@ function waitForUserTapAndStartAR() {
 
 async function startWorldAR() {
   console.log('[HIDDEN] Starting WebXR…');
+  console.log('[HIDDEN] startWorldAR context:', {
+    secureContext: window.isSecureContext,
+    userActivationActive: navigator.userActivation?.isActive,
+    hasXR: !!navigator.xr,
+  });
   setArStatus('Starting VR…');
 
   // Reset tree state for clean WebXR session

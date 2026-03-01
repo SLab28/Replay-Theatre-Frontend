@@ -100,6 +100,12 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
   const arOverlay = document.getElementById('ar-overlay');
   const arStatus = document.getElementById('ar-status');
 
+  console.log('[WebXR] startWebXRSession context:', {
+    secureContext: window.isSecureContext,
+    userActivationActive: navigator.userActivation?.isActive,
+    userActivationHasBeenActive: navigator.userActivation?.hasBeenActive,
+  });
+
   // Build feature lists with reference space negotiation
   const requiredFeatures = [];
   const optionalFeatures = ['unbounded', 'local-floor', 'local', 'viewer'];
@@ -116,6 +122,7 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
     xrSession = await navigator.xr.requestSession('immersive-vr', sessionInit);
     console.log('[WebXR] Session started successfully');
     console.log('[WebXR] Session environment integration:', xrSession.environmentIntegration);
+    console.log('[WebXR] Session visibilityState:', xrSession.visibilityState);
   } catch (err) {
     console.error('[WebXR] Session request failed:', err);
     console.log('[WebXR] Error name:', err.name);
@@ -137,6 +144,19 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
 
   // Bind session to Three.js renderer
   await renderer.xr.setSession(xrSession);
+  console.log('[WebXR] renderer.xr.isPresenting after setSession:', renderer.xr.isPresenting);
+
+  xrSession.addEventListener('visibilitychange', () => {
+    console.log('[WebXR] visibilitychange:', xrSession?.visibilityState);
+  });
+
+  renderer.xr.addEventListener('sessionstart', () => {
+    console.log('[WebXR] renderer sessionstart; isPresenting:', renderer.xr.isPresenting);
+  });
+
+  renderer.xr.addEventListener('sessionend', () => {
+    console.log('[WebXR] renderer sessionend; isPresenting:', renderer.xr.isPresenting);
+  });
 
   // Reference spaces - use viewer space for emulator compatibility
   let viewerSpace;
