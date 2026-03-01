@@ -16,6 +16,7 @@ import {
   requestWakeLock,
 } from './webxr-session.js';
 import { uniforms } from '../uniformsRegistry.js';
+import { createTextPanel } from './vr-text-panel.js';
 
 console.log('[HIDDEN] AR app initialising');
 
@@ -36,6 +37,12 @@ let timeData = null;
 let audioStarted = false;
 let lastAudioDebugTs = 0;
 let audioReactiveRampStartTs = 0;
+
+let speechRecognition = null;
+let speechTranscript = '';
+let vrTextPanelMesh = null;
+const _billboardCamPos = new THREE.Vector3();
+const _panelFollowPos = new THREE.Vector3();
 
 function smoothstep(min, max, value) {
   const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
@@ -74,6 +81,85 @@ async function initVoiceAudioReactivity() {
   } catch (err) {
     console.warn('[Audio] Voice capture not available:', err?.message || err);
   }
+}
+
+// ─────────────────────────────────────────────
+// Speech Recognition → VR text panel
+// ─────────────────────────────────────────────
+function initSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn('[Speech] SpeechRecognition API not available');
+    return;
+  }
+
+  speechRecognition = new SpeechRecognition();
+  speechRecognition.continuous = true;
+  speechRecognition.interimResults = true;
+  speechRecognition.lang = 'en-US';
+
+  let finalTranscript = '';
+
+  speechRecognition.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        finalTranscript += e.results[i][0].transcript + ' ';
+      } else {
+        interim = e.results[i][0].transcript;
+      }
+    }
+    speechTranscript = (finalTranscript + interim).trim();
+
+    if (vrTextPanelMesh && vrTextPanelMesh.userData.update) {
+      vrTextPanelMesh.userData.update(speechTranscript);
+    }
+  };
+
+  speechRecognition.onerror = (e) => {
+    if (e.error !== 'no-speech') {
+      console.warn('[Speech] Error:', e.error);
+    }
+  };
+
+  speechRecognition.onend = () => {
+    // Auto-restart to keep listening
+    if (speechRecognition) {
+      try { speechRecognition.start(); } catch (_) { /* already started */ }
+    }
+  };
+
+  try {
+    speechRecognition.start();
+    console.log('[Speech] Recognition started');
+  } catch (err) {
+    console.warn('[Speech] Could not start:', err?.message || err);
+  }
+}
+
+function setupVrTextPanel(sphereGroup) {
+  if (vrTextPanelMesh) return;
+
+  vrTextPanelMesh = createTextPanel({ width: 1.0, height: 0.25 });
+
+  // Use the sphere's local position directly (it's a direct child of scene)
+  vrTextPanelMesh.position.set(
+    sphereGroup.position.x,
+    sphereGroup.position.y - 0.6,
+    sphereGroup.position.z
+  );
+
+  // Add directly to scene (not as child) to avoid parent transform issues
+  scene.add(vrTextPanelMesh);
+
+  // Store sphere ref so we can follow it if grabbed
+  vrTextPanelMesh.userData._sphereGroup = sphereGroup;
+
+  // Show initial placeholder so user knows panel is active
+  vrTextPanelMesh.userData.update('Speak to the spirit…');
+
+  console.log('[VRText] Text panel at', vrTextPanelMesh.position.toArray(),
+    'sphere at', sphereGroup.position.toArray());
 }
 
 function updateVoiceAudioUniforms() {
@@ -385,6 +471,7 @@ async function startWorldAR() {
     onSessionEnd: () => {
       console.log('[HIDDEN] WebXR session ended');
     },
+    getSphereGroup: () => treeData?.points ?? null,
   });
 
   // Session auto-places the sphere right after start
@@ -424,6 +511,12 @@ function placeTree(hitPose) {
   bbox.getSize(size);
   console.log('[HIDDEN] Tree bounding box:', size.x.toFixed(2), 'x', size.y.toFixed(2), 'x', size.z.toFixed(2));
   console.log('[HIDDEN] Tree scale:', points.scale.x.toFixed(2), points.scale.y.toFixed(2), points.scale.z.toFixed(2));
+
+  // Attach voice transcript text panel below the sphere
+  setupVrTextPanel(points);
+
+  // Start speech recognition for voice-to-text overlay
+  initSpeechRecognition();
 
   // Start simple opacity fade-in
   startOpacityFadeIn();
@@ -490,6 +583,21 @@ function updateAnimations() {
   updateUniforms();
 
   updateVoiceAudioUniforms();
+
+  // Follow sphere position + face the camera
+  if (vrTextPanelMesh && camera) {
+    // Follow the sphere if it was grabbed/moved
+    const sg = vrTextPanelMesh.userData._sphereGroup;
+    if (sg) {
+      sg.getWorldPosition(_panelFollowPos);
+      vrTextPanelMesh.position.set(_panelFollowPos.x, _panelFollowPos.y - 0.6, _panelFollowPos.z);
+    }
+
+    // Billboard: face the active camera
+    const activeCamera = renderer.xr.isPresenting ? renderer.xr.getCamera(camera) : camera;
+    activeCamera.getWorldPosition(_billboardCamPos);
+    vrTextPanelMesh.lookAt(_billboardCamPos);
+  }
 
   // Update ocean planar reflection pass (from frame_bubble environment).
   if (oceanEnvironment?.userData?.updateReflection) {

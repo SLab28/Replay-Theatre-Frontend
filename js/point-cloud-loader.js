@@ -394,8 +394,8 @@ export async function loadPointCloud(_url, options = {}) {
     onProgress({ lengthComputable: true, loaded: 1, total: 1 });
   }
 
-  const radius = 0.65;
-  const shellThick = 0.065;
+  const radius = 0.35;
+  const shellThick = 0.035;
   const openAngle = 70.0;
 
   const mkUniforms = (shellRole) => ({
@@ -445,7 +445,7 @@ export async function loadPointCloud(_url, options = {}) {
 }
 
 export function createBubbleOceanEnvironment() {
-  const bubbleRadius = 0.65;
+  const bubbleRadius = 0.35;
   const oceanY = 0.0;
 
   const oceanGeo = new THREE.PlaneGeometry(40, 40, 220, 220);

@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { uniforms } from '../uniformsRegistry.js';
+import { updateHandInteraction } from './hand-interaction.js';
 
 let xrSession = null;
 let hitTestSource = null;
@@ -94,6 +95,7 @@ function createReticle(size = 0.35) {
  * @param {object} callbacks
  * @param {function} callbacks.onPlace — called once when user taps to place (hitPose)
  * @param {function} [callbacks.onSessionEnd] — called when session ends
+ * @param {function} [callbacks.getSphereGroup] — returns the sphere THREE.Group for hand grab
  * @returns {Promise<{ session: XRSession, referenceSpace: XRReferenceSpace }>}
  */
 export async function startWebXRSession(renderer, scene, camera, callbacks = {}) {
@@ -108,7 +110,7 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
 
   // Build feature lists — Quest requires local-floor for immersive-vr
   const requiredFeatures = ['local-floor'];
-  const optionalFeatures = ['local', 'viewer'];
+  const optionalFeatures = ['local', 'viewer', 'hand-tracking'];
   const sessionInit = {
     requiredFeatures,
     optionalFeatures,
@@ -230,7 +232,7 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
       return;
     }
 
-    // Auto-place once: 1.5m in front of viewer, 1.6m high.
+    // Auto-place once: 2.5m in front of viewer, 1.6m high.
     if (!placed) {
       const viewerPose = frame.getViewerPose(referenceSpace);
       if (viewerPose && viewerPose.views && viewerPose.views.length > 0) {
@@ -245,9 +247,9 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
 
         _currentHitPose = {
           position: {
-            x: t.position.x + forward.x * 1.5,
+            x: t.position.x + forward.x * 2.5,
             y: 1.6,
-            z: t.position.z + forward.z * 1.5,
+            z: t.position.z + forward.z * 2.5,
           },
           orientation: t.orientation,
           matrix: t.matrix,
@@ -257,6 +259,12 @@ export async function startWebXRSession(renderer, scene, camera, callbacks = {})
         console.log('[WebXR] Auto-placed object in front of viewer');
         if (callbacks.onPlace) callbacks.onPlace(_currentHitPose);
       }
+    }
+
+    // Hand / controller grab interaction
+    if (placed && callbacks.getSphereGroup) {
+      const sg = callbacks.getSphereGroup();
+      if (sg) updateHandInteraction(frame, referenceSpace, sg);
     }
 
     // Update animation uniforms from app loop
